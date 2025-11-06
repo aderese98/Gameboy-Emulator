@@ -1,0 +1,3 @@
+/home/ad-dev/Documents/C++/Gameboy/build/CMakeFiles/gbemu.dir
+/home/ad-dev/Documents/C++/Gameboy/build/CMakeFiles/edit_cache.dir
+/home/ad-dev/Documents/C++/Gameboy/build/CMakeFiles/rebuild_cache.dir

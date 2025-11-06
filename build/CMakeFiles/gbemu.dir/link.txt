@@ -1,0 +1,1 @@
+/usr/bin/g++ -g CMakeFiles/gbemu.dir/src/main.cpp.o CMakeFiles/gbemu.dir/src/bus.cpp.o CMakeFiles/gbemu.dir/src/cpu.cpp.o CMakeFiles/gbemu.dir/src/ppu.cpp.o CMakeFiles/gbemu.dir/src/joypad.cpp.o -o gbemu 
