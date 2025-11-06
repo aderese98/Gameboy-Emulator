@@ -133,6 +133,7 @@ CMakeFiles/gbemu.dir/src/main.cpp.o: \
  /usr/include/c++/13/bits/stl_bvector.h \
  /usr/include/c++/13/bits/vector.tcc \
  /home/ad-dev/Documents/C++/Gameboy/src/joypad.h \
+ /home/ad-dev/Documents/C++/Gameboy/src/cartridge.h \
  /usr/include/c++/13/iostream /usr/include/c++/13/ostream \
  /usr/include/c++/13/ios /usr/include/c++/13/exception \
  /usr/include/c++/13/bits/exception_ptr.h \

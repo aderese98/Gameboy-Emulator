@@ -153,6 +153,30 @@ src/bus.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/gbemu.dir/build.make CMakeFiles/gbemu.dir/src/bus.cpp.s
 .PHONY : src/bus.cpp.s
 
+src/cartridge.o: src/cartridge.cpp.o
+.PHONY : src/cartridge.o
+
+# target to build an object file
+src/cartridge.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gbemu.dir/build.make CMakeFiles/gbemu.dir/src/cartridge.cpp.o
+.PHONY : src/cartridge.cpp.o
+
+src/cartridge.i: src/cartridge.cpp.i
+.PHONY : src/cartridge.i
+
+# target to preprocess a source file
+src/cartridge.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gbemu.dir/build.make CMakeFiles/gbemu.dir/src/cartridge.cpp.i
+.PHONY : src/cartridge.cpp.i
+
+src/cartridge.s: src/cartridge.cpp.s
+.PHONY : src/cartridge.s
+
+# target to generate assembly for a file
+src/cartridge.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gbemu.dir/build.make CMakeFiles/gbemu.dir/src/cartridge.cpp.s
+.PHONY : src/cartridge.cpp.s
+
 src/cpu.o: src/cpu.cpp.o
 .PHONY : src/cpu.o
 
@@ -261,6 +285,9 @@ help:
 	@echo "... src/bus.o"
 	@echo "... src/bus.i"
 	@echo "... src/bus.s"
+	@echo "... src/cartridge.o"
+	@echo "... src/cartridge.i"
+	@echo "... src/cartridge.s"
 	@echo "... src/cpu.o"
 	@echo "... src/cpu.i"
 	@echo "... src/cpu.s"

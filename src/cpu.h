@@ -25,6 +25,9 @@ public:
     // Tracing control
     void set_trace(bool on) { trace_ = on; }
 
+    // Call after each instrution: advances DIV/TIMA by 'cycles'
+    void tick(int cycles);
+
     // 16-bit register pairs
     u16 AF() const { return af_; }
     u16 BC() const { return bc_; }
@@ -63,6 +66,11 @@ private:
     u8  fetch8();
     u16 fetch16(); // little-endian: lo then hi
 
+    // Interrupts
+    bool service_interrupt_if_any(); // returns true if one was serviced
+
+    void tick_div(int cycles);
+    void tick_tima(int cycles);
     void set_flag(Flag f, bool on);
     bool get_flag(Flag f) const;
 
@@ -89,6 +97,13 @@ private:
 
     static i8  as_i8(u8 b) { return static_cast<i8>(b); }
 
+    // Read/write an 8-bit reg OR (HL) by index (0=B,1=C,2=D,3=E,4=H,5=L,6=(HL),7=A)
+    u8  read_r8(int idx) const;
+    void write_r8(int idx, u8 v);
+
+    // Execute CB xx and return cycles used
+    int exec_cb(u8 cb);
+
 private:
     Bus& bus_;
     u16 af_{};
@@ -99,4 +114,13 @@ private:
     u16 pc_{};
 
     bool trace_{true};
+
+    // CPU core state
+    bool ime_{false};
+    bool ime_enable_pending_{false}; // EI takes effect AFTER next instruction
+    bool halted_{false};
+
+    // Timers
+    u32 div_counter_{0};
+    u32 tima_counter_{0};
 };

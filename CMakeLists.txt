@@ -18,4 +18,6 @@ add_executable(gbemu
   src/bus.cpp
   src/cpu.cpp
   src/ppu.cpp
+  src/joypad.cpp
+  src/cartridge.cpp
 )

@@ -28,5 +28,11 @@
   "command": "/usr/bin/g++   -g -std=c++20 -Wall -Wextra -Wpedantic -o CMakeFiles/gbemu.dir/src/joypad.cpp.o -c /home/ad-dev/Documents/C++/Gameboy/src/joypad.cpp",
   "file": "/home/ad-dev/Documents/C++/Gameboy/src/joypad.cpp",
   "output": "CMakeFiles/gbemu.dir/src/joypad.cpp.o"
+},
+{
+  "directory": "/home/ad-dev/Documents/C++/Gameboy/build",
+  "command": "/usr/bin/g++   -g -std=c++20 -Wall -Wextra -Wpedantic -o CMakeFiles/gbemu.dir/src/cartridge.cpp.o -c /home/ad-dev/Documents/C++/Gameboy/src/cartridge.cpp",
+  "file": "/home/ad-dev/Documents/C++/Gameboy/src/cartridge.cpp",
+  "output": "CMakeFiles/gbemu.dir/src/cartridge.cpp.o"
 }
 ]

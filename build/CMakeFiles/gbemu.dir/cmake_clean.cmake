@@ -1,6 +1,8 @@
 file(REMOVE_RECURSE
   "CMakeFiles/gbemu.dir/src/bus.cpp.o"
   "CMakeFiles/gbemu.dir/src/bus.cpp.o.d"
+  "CMakeFiles/gbemu.dir/src/cartridge.cpp.o"
+  "CMakeFiles/gbemu.dir/src/cartridge.cpp.o.d"
   "CMakeFiles/gbemu.dir/src/cpu.cpp.o"
   "CMakeFiles/gbemu.dir/src/cpu.cpp.o.d"
   "CMakeFiles/gbemu.dir/src/joypad.cpp.o"

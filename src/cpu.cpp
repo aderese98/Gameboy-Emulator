@@ -2,6 +2,20 @@
 #include "bus.h"
 #include <cstdio>
 
+static constexpr u16 IO_DIV = 0xFF04;
+static constexpr u16 IO_TIMA = 0xFF05;
+static constexpr u16 IO_TMA = 0xFF06;
+static constexpr u16 IO_TAC = 0xFF07;
+static constexpr u16 IO_IF  = 0xFF0F; // interrupt flag (bit 2 = timer)
+static constexpr u16 IO_IE  = 0xFFFF; // interrupt enable
+
+static constexpr u16 VEC_VBLANK = 0x0040;
+static constexpr u16 VEC_STAT   = 0x0048;
+static constexpr u16 VEC_TIMER  = 0x0050;
+static constexpr u16 VEC_SERIAL = 0x0058;
+static constexpr u16 VEC_JOYPAD = 0x0060;
+
+
 Cpu::Cpu(Bus& bus) : bus_(bus) {}
 
 void Cpu::reset_no_bios() {
@@ -12,6 +26,22 @@ void Cpu::reset_no_bios() {
     sp_ = 0xFFFE;
     pc_ = 0x0100;
     setF(static_cast<u8>(F() & 0xF0));
+
+    // IO baseline
+    bus_.write8(IO_IF, 0xE1);   // some high bits set; exact value not critical
+    bus_.write8(IO_IE, 0x00);   // no interrupts enabled by default
+
+    // Initialize timer registers
+    bus_.write8(IO_DIV, 0x00);
+    bus_.write8(IO_TIMA, 0x00);
+    bus_.write8(IO_TMA, 0x00);
+    bus_.write8(IO_TAC, 0x00);
+    div_counter_ = 0;
+    tima_counter_ = 0;
+
+    ime_ = false;
+    ime_enable_pending_ = false;
+    halted_ = false;
 }
 
 std::string Cpu::dump() const {
@@ -94,8 +124,90 @@ void Cpu::set_reg_by_index(int idx, u8 v) {
     }
 }
 
+u8 Cpu::read_r8(int idx) const {
+    switch (idx) {
+        case 0: return B();
+        case 1: return C();
+        case 2: return D();
+        case 3: return E();
+        case 4: return H();
+        case 5: return L();
+        case 6: return bus_.read8(HL()); // (HL)
+        case 7: return A();
+        default: return 0;
+    }
+}
+
+void Cpu::write_r8(int idx, u8 v) {
+    switch (idx) {
+        case 0: setB(v); break;
+        case 1: setC(v); break;
+        case 2: setD(v); break;
+        case 3: setE(v); break;
+        case 4: setH(v); break;
+        case 5: setL(v); break;
+        case 6: bus_.write8(HL(), v); break; // (HL)
+        case 7: setA(v); break;
+        default: break;
+    }
+}
+
+bool Cpu::service_interrupt_if_any() {
+    u8 IF = bus_.read8(IO_IF);
+    u8 IE = bus_.read8(IO_IE);
+    u8 pending = static_cast<u8>(IF & IE);
+    if (pending == 0) return false;
+
+    // Service the highest-priority set bit 0..4
+    int id = -1;
+    if (pending & (1 << 0)) id = 0;       // VBlank
+    else if (pending & (1 << 1)) id = 1;  // STAT
+    else if (pending & (1 << 2)) id = 2;  // TIMER
+    else if (pending & (1 << 3)) id = 3;  // SERIAL
+    else if (pending & (1 << 4)) id = 4;  // JOYPAD
+    if (id < 0) return false;
+
+    // Acknowledge: clear IF bit
+    bus_.write8(IO_IF, static_cast<u8>(IF & ~(1 << id)));
+
+    // Disable IME and exit HALT
+    ime_ = false;
+    halted_ = false;
+
+    // Push PC and jump to vector
+    u16 vec = static_cast<u16>(0x0040 + 8 * id);
+    push16(pc_);
+    pc_ = vec;
+
+    // Servicing an interrupt takes 20 cycles; caller should account for it
+    return true;
+}
+
 // ----------------- fetch/decode/execute -----------------
 int Cpu::step() {
+    // If IME is enabled and an interrupt is pending, service it now
+    if (ime_ && service_interrupt_if_any()) {
+        // 20 cycles for the service; EI-delay handling still happens below
+        // We return here because the "instruction" this step was the interrupt service
+        // but we should also apply EI delayed effect AFTER an instruction:
+        if (ime_enable_pending_) { ime_ = true; ime_enable_pending_ = false; }
+        return 20;
+    }
+
+    // If HALTed and no (enabled) interrupt to wake us, burn 4 cycles and stay halted
+    if (halted_) {
+        // Wake if ANY interrupt is pending (even if IME=0), per simple HALT behavior
+        u8 IF = bus_.read8(IO_IF);
+        u8 IE = bus_.read8(IO_IE);
+        if ((IF & IE) != 0) {
+            halted_ = false; // wake; next loop will service if IME=1
+        } else {
+            // remain halted this step
+            if (ime_enable_pending_) { ime_ = true; ime_enable_pending_ = false; }
+            return 4;
+        }
+    }
+
     const u16 pc_before = pc_;
     const u8 op = fetch8();
 
@@ -104,33 +216,38 @@ int Cpu::step() {
         std::printf("%04X: %-16s  %s\n", pc_before, line.c_str(), dump().c_str());
     }
 
+    // Helper to apply delayed IME enable before returning
+    auto finish = [&](int cycles) -> int {
+        if (ime_enable_pending_) { ime_ = true; ime_enable_pending_ = false; }
+        return cycles;
+    };
+
     switch (op) {
         // ---- NOP ----
-        case 0x00: // NOP
-            return 4;
+        case 0x00: return finish(4); // NOP
 
         // ---- LD r, d8 (B,C,D,E,H,L,A) ----
-        case 0x06: { setB(fetch8()); return 8; } // LD B,d8
-        case 0x0E: { setC(fetch8()); return 8; } // LD C,d8
-        case 0x16: { setD(fetch8()); return 8; } // LD D,d8
-        case 0x1E: { setE(fetch8()); return 8; } // LD E,d8
-        case 0x26: { setH(fetch8()); return 8; } // LD H,d8
-        case 0x2E: { setL(fetch8()); return 8; } // LD L,d8
-        case 0x3E: { setA(fetch8()); return 8; } // LD A,d8
+        case 0x06: { setB(fetch8()); return finish(8); } // LD B,d8
+        case 0x0E: { setC(fetch8()); return finish(8); } // LD C,d8
+        case 0x16: { setD(fetch8()); return finish(8); } // LD D,d8
+        case 0x1E: { setE(fetch8()); return finish(8); } // LD E,d8
+        case 0x26: { setH(fetch8()); return finish(8); } // LD H,d8
+        case 0x2E: { setL(fetch8()); return finish(8); } // LD L,d8
+        case 0x3E: { setA(fetch8()); return finish(8); } // LD A,d8
 
         // ---- INC r (B,C,D,E,H,L,A) ----
-        case 0x04: { setB(alu_inc8(B())); return 4; } // INC B
-        case 0x0C: { setC(alu_inc8(C())); return 4; } // INC C
-        case 0x14: { setD(alu_inc8(D())); return 4; } // INC D
-        case 0x1C: { setE(alu_inc8(E())); return 4; } // INC E
-        case 0x24: { setH(alu_inc8(H())); return 4; } // INC H
-        case 0x2C: { setL(alu_inc8(L())); return 4; } // INC L
-        case 0x3C: { setA(alu_inc8(A())); return 4; } // INC A
+        case 0x04: { setB(alu_inc8(B())); return finish(4); } // INC B
+        case 0x0C: { setC(alu_inc8(C())); return finish(4); } // INC C
+        case 0x14: { setD(alu_inc8(D())); return finish(4); } // INC D
+        case 0x1C: { setE(alu_inc8(E())); return finish(4); } // INC E
+        case 0x24: { setH(alu_inc8(H())); return finish(4); } // INC H
+        case 0x2C: { setL(alu_inc8(L())); return finish(4); } // INC L
+        case 0x3C: { setA(alu_inc8(A())); return finish(4); } // INC A
 
         // ---- DEC r (B,C,D,E,H,L,A) ----
-        case 0x05: { setB(alu_dec8(B())); return 4; } // DEC B
-        case 0x0D: { setC(alu_dec8(C())); return 4; } // DEC C
-        case 0x15: { setD(alu_dec8(D())); return 4; } // DEC D
+        case 0x05: { setB(alu_dec8(B())); return finish(4); } // DEC B
+        case 0x0D: { setC(alu_dec8(C())); return finish(4); } // DEC C
+        case 0x15: { setD(alu_dec8(D())); return finish(4); } // DEC D
         case 0x1D: { setE(alu_dec8(E())); return 4; } // DEC E
         case 0x25: { setH(alu_dec8(H())); return 4; } // DEC H
         case 0x2D: { setL(alu_dec8(L())); return 4; } // DEC L
@@ -335,14 +452,58 @@ int Cpu::step() {
             pc_ = vec;
             return 16;
         }
+
+        // ---------- Interrupt control ----------
+        case 0xFB: { // EI (enable after NEXT instruction)
+            ime_enable_pending_ = true;
+            return 4;
+        }
+        case 0xF3: { // DI
+            ime_ = false;
+            ime_enable_pending_ = false;
+            return 4;
+        }
+
+        // ---------- HALT ----------
+        case 0x76: { // HALT
+            halted_ = true;
+            return 4;
+        }
+
+        // ---------- RETI ----------
+        case 0xD9: { // RETI = RET + IME=1
+            pc_ = pop16();
+            ime_ = true;
+            return 16;
+        }
+
+        // ---------- Memory load/store ----------
+        case 0xEA: { // LD (a16), A
+            u16 a = fetch16();
+            bus_.write8(a, A());
+            return 16;
+        }
+        case 0xFA: { // LD A, (a16)
+            u16 a = fetch16();
+            setA(bus_.read8(a));
+            return 16;
+        }
+
+        // ---------- CB prefix (bit operations) ----------
+        case 0xCB: {
+            u8 cb = fetch8();
+            if (trace_) {
+                // Optional: quick inline disasm label
+                std::printf("%04X: CB %02X           %s\n", static_cast<unsigned>(pc_-2), cb, dump().c_str());
+            }
+            return exec_cb(cb);
+        }
         
 
         // ---- LD r, r' block (0x40..0x7F) ----
         default:
             if(op >= 0x40 && op <= 0x7F) {
-                if (op == 0x76) {
-                    return 4;
-                }
+                // 0x76 (HALT) is handled separately above
                 int dst = (op >> 3) & 0x07;
                 int src = (op >> 0) & 0x07;
 
@@ -368,9 +529,7 @@ int Cpu::step() {
 
             return 4;
     }
-}
-
-static const char* reg_name_by_index(int idx) {
+}static const char* reg_name_by_index(int idx) {
     switch (idx) {
         case 0: return "B";
         case 1: return "C";
@@ -454,16 +613,21 @@ std::string Cpu::disasm(u16 pc_before, u8 op) const {
         case 0xD5: return "PUSH DE";
         case 0xD7: return "RST 10h";
         case 0xD8: return "RET C";
+        case 0xD9: return "RETI";
         case 0xDA: return "JP C, a16";
         case 0xDC: return "CALL C, a16";
         case 0xDF: return "RST 18h";
         case 0xE1: return "POP HL";
         case 0xE5: return "PUSH HL";
         case 0xE7: return "RST 20h";
+        case 0xEA: return "LD (a16), A";
         case 0xEF: return "RST 28h";
         case 0xF1: return "POP AF";
+        case 0xF3: return "DI";
         case 0xF5: return "PUSH AF";
         case 0xF7: return "RST 30h";
+        case 0xFA: return "LD A, (a16)";
+        case 0xFB: return "EI";
         case 0xFF: return "RST 38h";
 
         default:
@@ -494,4 +658,157 @@ u16 Cpu::pop16() {
     u8 hi = bus_.read8(sp_);
     sp_ = static_cast<u16>(sp_ + 1);
     return static_cast<u16>((hi << 8) | lo);
+}
+
+int Cpu::exec_cb(u8 cb) {
+    int x = (cb >> 6) & 0x03;
+    int y = (cb >> 3) & 0x07;
+    int z = cb & 0x07;
+
+    auto set_znh0 = [&](u8 res, bool carry) {
+        set_flag(FLAG_Z, res == 0);
+        set_flag(FLAG_N, false);
+        set_flag(FLAG_H, false);
+        set_flag(FLAG_C, carry);
+    };
+
+    auto op_on = [&](auto fn) -> int {
+        if (z == 6) {
+            u8 v = bus_.read8(HL());
+            u8 res; bool c;
+            fn(v, res, c);
+            bus_.write8(HL(), res);
+            set_znh0(res, c);
+            return 16;
+        } else {
+            u8 v = read_r8(z);
+            u8 res; bool c;
+            fn(v, res, c);
+            write_r8(z, res);
+            set_znh0(res, c);
+            return 8;
+        }
+    };
+
+    switch (x) {
+        // x==0: RLC,RRC,RL,RR,SLA,SRA,SWAP,SRL
+        case 0: {
+            switch (y) {
+                case 0: // RLC r
+                    return op_on([&](u8 v, u8& r, bool& c){ c = (v & 0x80) != 0; r = static_cast<u8>((v << 1) | (c ? 1 : 0)); });
+                case 1: // RRC r
+                    return op_on([&](u8 v, u8& r, bool& c){ c = (v & 0x01) != 0; r = static_cast<u8>((v >> 1) | (c ? 0x80 : 0)); });
+                case 2: // RL r (through carry)
+                    return op_on([&](u8 v, u8& r, bool& c){ bool old = (v & 0x80) != 0; u8 carry = get_flag(FLAG_C) ? 1 : 0; r = static_cast<u8>((v << 1) | carry); c = old; });
+                case 3: // RR r (through carry)
+                    return op_on([&](u8 v, u8& r, bool& c){ bool old = (v & 0x01) != 0; u8 carry = get_flag(FLAG_C) ? 0x80 : 0; r = static_cast<u8>((v >> 1) | carry); c = old; });
+                case 4: // SLA r
+                    return op_on([&](u8 v, u8& r, bool& c){ c = (v & 0x80) != 0; r = static_cast<u8>(v << 1); });
+                case 5: // SRA r (arith)
+                    return op_on([&](u8 v, u8& r, bool& c){ c = (v & 0x01) != 0; r = static_cast<u8>((v >> 1) | (v & 0x80)); });
+                case 6: // SWAP r (hi/lo nibbles)
+                    return op_on([&](u8 v, u8& r, bool& c){ r = static_cast<u8>((v >> 4) | (v << 4)); c = false; });
+                case 7: // SRL r (logical)
+                    return op_on([&](u8 v, u8& r, bool& c){ c = (v & 0x01) != 0; r = static_cast<u8>(v >> 1); });
+            }
+            break;
+        }
+
+        // x==1: BIT y, r
+        case 1: {
+            u8 v = (z == 6) ? bus_.read8(HL()) : read_r8(z);
+            bool bit = (v >> y) & 1;
+            set_flag(FLAG_Z, !bit);
+            set_flag(FLAG_N, false);
+            set_flag(FLAG_H, true);
+            // C unchanged
+            return (z == 6) ? 12 : 8;
+        }
+
+        // x==2: RES y, r
+        case 2: {
+            if (z == 6) {
+                u8 v = bus_.read8(HL());
+                v = static_cast<u8>(v & ~(1u << y));
+                bus_.write8(HL(), v);
+                return 16;
+            } else {
+                u8 v = read_r8(z);
+                v = static_cast<u8>(v & ~(1u << y));
+                write_r8(z, v);
+                return 8;
+            }
+        }
+
+        // x==3: SET y, r
+        case 3: {
+            if (z == 6) {
+                u8 v = bus_.read8(HL());
+                v = static_cast<u8>(v | (1u << y));
+                bus_.write8(HL(), v);
+                return 16;
+            } else {
+                u8 v = read_r8(z);
+                v = static_cast<u8>(v | (1u << y));
+                write_r8(z, v);
+                return 8;
+            }
+        }
+    }
+
+    // Shouldn't reach
+    return 4;
+}
+
+void Cpu::tick(int cycles) {
+    tick_div(cycles);
+    tick_tima(cycles);
+}
+
+void Cpu::tick_div(int cycles) {
+    // DIV increments every 256 cycles
+    div_counter_ += static_cast<u32>(cycles);
+    while (div_counter_ >= 256) {
+        div_counter_ -= 256;
+        u8 div = bus_.read8(IO_DIV);
+        bus_.write8(IO_DIV, static_cast<u8>(div + 1));
+    }
+}
+
+static int tima_period_from_tac(u8 tac) {
+    // TAC bits: 2=enable, 1..0=clock select
+    switch (tac & 0x03) {
+        case 0b00: return 1024; // 4096 Hz
+        case 0b01: return 16;   // 262144 Hz
+        case 0b10: return 64;   // 65536 Hz
+        case 0b11: return 256;  // 16384 Hz
+    }
+    return 1024;
+}
+
+void Cpu::tick_tima(int cycles) {
+    u8 tac = bus_.read8(IO_TAC);
+    if ((tac & 0x04) == 0) {
+        // Timer disabled
+        return;
+    }
+
+    tima_counter_ += static_cast<u32>(cycles);
+    const int period = tima_period_from_tac(tac);
+
+    while (tima_counter_ >= static_cast<u32>(period)) {
+        tima_counter_ -= period;
+
+        u8 tima = bus_.read8(IO_TIMA);
+        if (tima == 0xFF) {
+            // Overflow: reload from TMA and request timer interrupt (IF bit 2)
+            u8 tma = bus_.read8(IO_TMA);
+            bus_.write8(IO_TIMA, tma);
+
+            u8 iff = bus_.read8(IO_IF);
+            bus_.write8(IO_IF, static_cast<u8>(iff | (1 << 2))); // set timer IF bit
+        } else {
+            bus_.write8(IO_TIMA, static_cast<u8>(tima + 1));
+        }
+    }
 }
