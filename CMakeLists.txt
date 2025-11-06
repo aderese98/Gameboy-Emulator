@@ -17,4 +17,5 @@ add_executable(gbemu
   src/main.cpp
   src/bus.cpp
   src/cpu.cpp
+  src/ppu.cpp
 )
