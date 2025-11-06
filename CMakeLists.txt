@@ -21,3 +21,7 @@ add_executable(gbemu
   src/joypad.cpp
   src/cartridge.cpp
 )
+
+# Find and link SDL2
+find_package(SDL2 REQUIRED)
+target_link_libraries(gbemu PRIVATE SDL2::SDL2)

@@ -5,6 +5,7 @@
 
 class Joypad;
 class Cartridge;
+class Ppu;
 
 class Bus {
 public:
@@ -18,9 +19,11 @@ public:
     // NEW
     void attach_joypad(Joypad* jp) { joypad_ = jp; }
     void attach_cartridge(Cartridge* cart) { cart_ = cart; }
+    void attach_ppu(Ppu* p)          { ppu_ = p; }
 
 private:
     std::array<u8, 0x10000> mem_;
     Joypad*   joypad_{nullptr};
     Cartridge* cart_{nullptr};
+    Ppu*      ppu_{nullptr};
 };

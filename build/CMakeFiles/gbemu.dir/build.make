@@ -172,6 +172,7 @@ gbemu: CMakeFiles/gbemu.dir/src/ppu.cpp.o
 gbemu: CMakeFiles/gbemu.dir/src/joypad.cpp.o
 gbemu: CMakeFiles/gbemu.dir/src/cartridge.cpp.o
 gbemu: CMakeFiles/gbemu.dir/build.make
+gbemu: /usr/lib/x86_64-linux-gnu/libSDL2.so
 gbemu: CMakeFiles/gbemu.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/ad-dev/Documents/C++/Gameboy/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Linking CXX executable gbemu"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/gbemu.dir/link.txt --verbose=$(VERBOSE)

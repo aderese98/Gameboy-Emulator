@@ -5,6 +5,8 @@
 static constexpr u16 IO_JOYP = 0xFF00;
 static constexpr u16 IO_DMA  = 0xFF46;
 static constexpr u16 OAM_BASE = 0xFE00;
+static constexpr u16 IO_STAT = 0xFF41;
+static constexpr u16 IO_LY   = 0xFF44;
 
 Bus::Bus() : mem_{} {}
 
@@ -39,6 +41,17 @@ void Bus::write8(u16 addr, u8 val) {
             mem_[static_cast<u16>(OAM_BASE + i)] = read8(static_cast<u16>(src + i));
         }
         mem_[addr] = val;
+        return;
+    }
+
+    // NEW: PPU-owned IO (STAT, LY)
+    if ((addr == IO_STAT || addr == IO_LY) && ppu_) {
+        // Let the PPU enforce writable bits/rules. Mirror the written value
+        // into memory for visibility, then call the PPU shim to handle
+        // the canonical behavior (PPU may overwrite LY immediately, etc.).
+        mem_[addr] = val;
+        extern void ppu_io_write(class Ppu*, u16, u8);
+        ppu_io_write(ppu_, addr, val);
         return;
     }
 

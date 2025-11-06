@@ -1,1 +1,1 @@
-/usr/bin/g++ -g CMakeFiles/gbemu.dir/src/main.cpp.o CMakeFiles/gbemu.dir/src/bus.cpp.o CMakeFiles/gbemu.dir/src/cpu.cpp.o CMakeFiles/gbemu.dir/src/ppu.cpp.o CMakeFiles/gbemu.dir/src/joypad.cpp.o CMakeFiles/gbemu.dir/src/cartridge.cpp.o -o gbemu 
+/usr/bin/g++ -g CMakeFiles/gbemu.dir/src/main.cpp.o CMakeFiles/gbemu.dir/src/bus.cpp.o CMakeFiles/gbemu.dir/src/cpu.cpp.o CMakeFiles/gbemu.dir/src/ppu.cpp.o CMakeFiles/gbemu.dir/src/joypad.cpp.o CMakeFiles/gbemu.dir/src/cartridge.cpp.o -o gbemu  /usr/lib/x86_64-linux-gnu/libSDL2.so 
